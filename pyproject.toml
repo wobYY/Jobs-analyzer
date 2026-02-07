@@ -1,0 +1,35 @@
+[project]
+name = "jobs"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "cloudscraper",
+    "concurrent-log-handler>=0.9.28",
+    "fake-useragent>=2.2.0",
+    "httpx>=0.28.1",
+    "selectolax>=0.4.6",
+]
+
+[dependency-groups]
+dev = [
+    "icecream>=2.1.10",
+    "ipykernel>=7.2.0",
+    "pytest>=9.0.2",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["module", "utils"]
+include = ["*"]
+exclude = ["tests*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["module", "utils"]
+
+[tool.uv.sources]
+cloudscraper = { git = "https://github.com/VeNoMouS/cloudscraper.git" }
