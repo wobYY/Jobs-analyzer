@@ -155,10 +155,14 @@ def process_job_descriptions(
             )
 
     # Store the processed data in a new parquet file
-    extracted_data_df = pd.DataFrame(extracted_data_dict)
-    final_df = df.merge(extracted_data_df, on="url", how="left")
-    final_df.to_parquet(filename, index=False)
+    final_df = df.merge(pd.DataFrame(extracted_data_dict), on="url", how="left")
+    __parquet_df = df.merge(
+        pd.DataFrame(extracted_data_dict, dtype=str), on="url", how="left"
+    )
+    __parquet_df.to_parquet(filename, index=False)
     log.info(f"Processed data saved to: {filename}")
+
+    return final_df.copy()
 
 
 if __name__ == "__main__":
