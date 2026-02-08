@@ -104,6 +104,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+private_key.pem
 
 # Spyder project settings
 .spyderproject
@@ -126,6 +127,7 @@ dmypy.json
 # Temp folder
 tmp/
 logs/
+.vscode/
 
 # Notebooks for testing
 *.ipynb

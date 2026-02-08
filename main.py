@@ -1,18 +1,15 @@
 import pathlib
 import random
 import time
-import urllib.parse as urlparse
 
 import pandas as pd
 import pendulum
-from icecream import ic
+from rich.progress import track
 
-from module.html_parser import PARSER_CONFIG
+from module.html_parser import parser
 from utils.logging import get_logger
 
 log = get_logger()
-
-ic.configureOutput(includeContext=True)
 
 
 # Check if /tmp exists
@@ -37,7 +34,7 @@ def process_urls(**kwargs) -> None:
         raise RuntimeError(
             "No csv file found in /tmp directory. Please add the csv file with the URLs in the /tmp directory and run the script again."
         )
-    ic(csv_files)
+
     for csv_file in csv_files:
         log.info(f"Processing file: {csv_file}")
         # Here you would add the logic to process the URLs in the csv file
@@ -46,35 +43,21 @@ def process_urls(**kwargs) -> None:
         with open(csv_file, "r") as f:
             urls: list[str] = f.readlines()
 
+            # Make sure that the urls are not empty strings and that there
+            # are URLs
+            urls = [url.strip() for url in urls if url.strip() != ""]
             if len(urls) == 0:
                 log.warning(f"No URLs found in file: {csv_file}")
                 continue
 
             data = []
-            parser_hosts = set(PARSER_CONFIG.keys())
-            for url in urls:
-                # Add your URL processing logic here
-                host_name: str | None = None
-
-                url_host = urlparse.urlparse(url.strip()).netloc
-                for __parser_domain in parser_hosts:
-                    if __parser_domain in url_host:
-                        host_name: str = __parser_domain
-                        break
-
-                if host_name is None:
-                    log.warning(f"No parser found for URL: {url.strip()}")
-                    continue
-
-                data.append(
-                    PARSER_CONFIG.get(host_name)(
-                        url=url.strip(),
-                        **kwargs,
-                    )
-                )
+            for url in track(urls, description=f"Processing URLs from {csv_file}..."):
+                data.append(parser(url=url.strip()))
 
                 sleep_time = random.randint(3, 20)
-                log.debug(f"Sleeping for {sleep_time} seconds to avoid rate limiting.")
+                log.debug(
+                    f"Sleeping for {sleep_time} seconds to avoid getting blocked."
+                )
                 time.sleep(sleep_time)
 
             # Create a pandas DataFrame from the data list and save it to a new csv file
