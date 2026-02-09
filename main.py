@@ -1,3 +1,4 @@
+import concurrent.futures
 import json
 import pathlib
 import random
@@ -6,13 +7,27 @@ from typing import Any
 
 import pandas as pd
 import pendulum
-from rich.progress import track
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    TaskProgressColumn,
+    TextColumn,
+    track,
+)
 
 from module.html_parser import parser
 from module.llm_processing import request_llm_response
 from utils.logging import get_logger
 
 log = get_logger()
+
+progress_bar = Progress(
+    TextColumn("[progress.description]{task.description}"),
+    BarColumn(),
+    TaskProgressColumn(),
+    MofNCompleteColumn(),
+)
 
 # Define the system prompt for the LLM to extract information from the job description
 LLM_PROMPT = """The provided message contain the job post information. I want you to, based on the provided job description, extract certain information. The information required and the column name are as follows:
@@ -104,6 +119,40 @@ def scrape_data() -> pd.DataFrame:
             return df.copy()
 
 
+def __request_summary_from_llm(job_description: str) -> dict[str, Any]:
+    response = request_llm_response(
+        model="openai/gpt-oss-120b",
+        prompt=LLM_PROMPT,
+        message=job_description,
+        reasoning="high",
+    )
+
+    if int(response.status_code) == 200:
+        llm_output: dict[str, Any] = response.json()
+        for output in llm_output.get("output", []):
+            if str(output.get("type")).lower() != "message":
+                continue
+
+            return json.loads(output.get("content", "{}"))
+
+    return {}
+
+
+def request_and_parse(url: str, job_description: str) -> dict[str, Any]:
+    try:
+        llm_output = __request_summary_from_llm(job_description)
+    except Exception as e:
+        log.error(f"Error fetching/parsing data for URL: {url}. Error: {e}")
+        llm_output = {
+            url: url.strip(),
+        }
+
+    return {
+        "url": url.strip(),
+        **llm_output,
+    }
+
+
 def process_job_descriptions(
     path_to_df: str | pathlib.Path | None = None,
     df: pd.DataFrame | None = None,
@@ -124,35 +173,26 @@ def process_job_descriptions(
 
     # Process each job description in the DataFrame using the LLM
     extracted_data_dict = []
-    for index, row in track(
-        df.iterrows(), total=len(df), description="Processing job descriptions..."
-    ):
-        job_description = row["job_description"]
-        response = request_llm_response(
-            model="openai/gpt-oss-120b",
-            prompt=LLM_PROMPT,
-            message=job_description,
-            reasoning="high",
+    with progress_bar:
+        task = progress_bar.add_task("Processing job descriptions...", total=len(df))
+
+        url_desc_pair: list[dict[str, str]] = df[["url", "job_description"]].to_dict(
+            orient="records"
         )
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            futures = [
+                executor.submit(
+                    request_and_parse,
+                    url=row["url"],
+                    job_description=row["job_description"],
+                )
+                for row in url_desc_pair
+            ]
 
-        if int(response.status_code) == 200:
-            try:
-                llm_output: dict[str, Any] = response.json()
-                extracted_info: dict[str, Any]
-                for output in llm_output.get("output", []):
-                    if str(output.get("type")).lower() != "message":
-                        continue
-
-                    extracted_info = json.loads(output.get("content", "{}"))
-                    extracted_data_dict.append({"url": row["url"], **extracted_info})
-
-            except (json.JSONDecodeError, KeyError) as e:
-                log.error(f"Error parsing LLM response for index {index}: {e}")
-                continue
-        else:
-            log.error(
-                f"LLM request failed for index {index} with status code {response.status_code}"
-            )
+            for future in concurrent.futures.as_completed(futures):
+                result = future.result()
+                extracted_data_dict.append(result)
+                progress_bar.update(task, advance=1)
 
     # Store the processed data in a new parquet file
     final_df = df.merge(pd.DataFrame(extracted_data_dict), on="url", how="left")
@@ -166,6 +206,14 @@ def process_job_descriptions(
 
 
 if __name__ == "__main__":
+    start_time = time.perf_counter()
     df = scrape_data()
+    log.info(
+        "Data scraping completed after %s seconds.", (time.perf_counter() - start_time)
+    )
 
     process_job_descriptions(df=df)
+    log.info(
+        "Job description processing completed after %s seconds.",
+        (time.perf_counter() - start_time),
+    )

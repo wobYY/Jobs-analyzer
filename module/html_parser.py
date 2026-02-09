@@ -11,9 +11,9 @@ from utils.encryption import decrypt_data
 @dataclass
 class JobData:
     url: str
-    job_posting_company: str | None
-    job_title: str | None
-    job_description: str | None
+    job_posting_company: str | None = None
+    job_title: str | None = None
+    job_description: str | None = None
 
 
 def parser(url: str, response_text: str | None = None, **kwargs) -> JobData:
@@ -28,12 +28,7 @@ def parser(url: str, response_text: str | None = None, **kwargs) -> JobData:
 
     if host_name is None:
         logging.warning(f"No parser found for URL: {url.strip()}")
-        return JobData(
-            url=url.strip(),
-            job_posting_company=None,
-            job_title=None,
-            job_description=None,
-        ).__dict__
+        return JobData(url=url.strip())
 
     return PARSER_CONFIG.get(host_name)(
         url=url.strip(),
@@ -56,19 +51,19 @@ def _parse_l(url: str, response_text: str | None = None) -> JobData:
         job_description = html.css_first(
             'div[class*="description__text description__text--rich"] section div[class*="show-more-less-html__markup"]'
         )
-        return {
-            "url": url.strip(),
-            "job_posting_company": job_posting_company.text(strip=True)
+        return JobData(
+            url=url.strip(),
+            job_posting_company=job_posting_company.text(strip=True).split(".css-")[0]
             if job_posting_company is not None
             else None,
-            "job_title": job_title.text(strip=True) if job_title is not None else None,
-            "job_description": job_description.text(strip=True, separator="\n")
+            job_title=job_title.text(strip=True) if job_title is not None else None,
+            job_description=job_description.text(strip=True, separator="\n")
             if job_description
             else None,
-        }
+        )
     except Exception as e:
         logging.error(f"Error parsing: {e}")
-        return {}
+        return JobData(url=url.strip())
 
 
 def _parse_i(url: str, response_text: str | None = None) -> JobData:
@@ -83,19 +78,19 @@ def _parse_i(url: str, response_text: str | None = None) -> JobData:
             'div[class*="jobsearch-JobInfoHeader-title-container"]'
         )
         job_description = html.css_first("div#jobDescriptionText")
-        return {
-            "url": url.strip(),
-            "job_posting_company": job_posting_company.text(strip=True).split(".css-")[
-                0
-            ],
-            "job_title": job_title.text(strip=True) if job_title is not None else None,
-            "job_description": job_description.text(strip=True, separator="\n")
+        return JobData(
+            url=url.strip(),
+            job_posting_company=job_posting_company.text(strip=True).split(".css-")[0]
+            if job_posting_company is not None
+            else None,
+            job_title=job_title.text(strip=True) if job_title is not None else None,
+            job_description=job_description.text(strip=True, separator="\n")
             if job_description
             else None,
-        }
+        )
     except Exception as e:
         logging.error(f"Error parsing: {e}")
-        return {}
+        return JobData(url=url.strip())
 
 
 PARSER_CONFIG: dict[str, callable] = {
